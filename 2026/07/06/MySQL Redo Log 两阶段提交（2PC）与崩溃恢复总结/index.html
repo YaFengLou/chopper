@@ -6,15 +6,15 @@
   
   <title>MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结 | Hexo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-  <meta name="description" content="MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结1. 两阶段提交（2PC）流程两阶段提交确保 Redo Log 和 Binlog 一致，流程如下： 第一阶段：Prepare 事务执行 SQL，修改数据。 Redo Log 记录写入磁盘，但标记为 prepare 状态（数据未真正提交）。 MySQL Server 层通知事务已准备好提交。  第二阶段：Commit Binlog 写入">
+  <meta name="description" content="全面总结 MySQL 崩溃恢复时，两阶段提交（2PC）是如何保证数据不丢失的。">
 <meta property="og:type" content="article">
 <meta property="og:title" content="MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结">
 <meta property="og:url" content="https://yafenglou.github.io/2026/07/06/MySQL%20Redo%20Log%20%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%EF%BC%882PC%EF%BC%89%E4%B8%8E%E5%B4%A9%E6%BA%83%E6%81%A2%E5%A4%8D%E6%80%BB%E7%BB%93/index.html">
 <meta property="og:site_name" content="Hexo">
-<meta property="og:description" content="MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结1. 两阶段提交（2PC）流程两阶段提交确保 Redo Log 和 Binlog 一致，流程如下： 第一阶段：Prepare 事务执行 SQL，修改数据。 Redo Log 记录写入磁盘，但标记为 prepare 状态（数据未真正提交）。 MySQL Server 层通知事务已准备好提交。  第二阶段：Commit Binlog 写入">
+<meta property="og:description" content="全面总结 MySQL 崩溃恢复时，两阶段提交（2PC）是如何保证数据不丢失的。">
 <meta property="og:locale" content="zh_CN">
-<meta property="article:published_time" content="2026-07-06T04:00:00.000Z">
-<meta property="article:modified_time" content="2026-07-06T08:52:27.638Z">
+<meta property="article:published_time" content="2026-07-06T10:22:50.000Z">
+<meta property="article:modified_time" content="2026-07-06T12:00:00.000Z">
 <meta property="article:author" content="John Doe">
 <meta property="article:tag" content="MySQL">
 <meta property="article:tag" content="数据库">
@@ -78,11 +78,11 @@
         <section id="main"><article id="post-MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结" class="h-entry article article-type-post" itemprop="blogPost" itemscope itemtype="https://schema.org/BlogPosting">
   <div class="article-meta">
     <a href="/2026/07/06/MySQL%20Redo%20Log%20%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%EF%BC%882PC%EF%BC%89%E4%B8%8E%E5%B4%A9%E6%BA%83%E6%81%A2%E5%A4%8D%E6%80%BB%E7%BB%93/" class="article-date">
-  <time class="dt-published" datetime="2026-07-06T04:00:00.000Z" itemprop="datePublished">2026-07-06</time>
+  <time class="dt-published" datetime="2026-07-06T10:22:50.000Z" itemprop="datePublished">2026-07-06</time>
 </a>
     
   <div class="article-category">
-    <a class="article-category-link" href="/categories/%E5%90%8E%E7%AB%AF/">后端</a>
+    <a class="article-category-link" href="/categories/%E5%90%8E%E7%AB%AF/">后端</a>►<a class="article-category-link" href="/categories/%E5%90%8E%E7%AB%AF/%E6%95%B0%E6%8D%AE%E5%BA%93%E5%86%85%E9%83%A8%E5%8E%9F%E7%90%86/">数据库内部原理</a>
   </div>
 
   </div>
@@ -101,7 +101,7 @@
     
     <div class="e-content article-entry" itemprop="articleBody">
       
-        <h1 id="MySQL-Redo-Log-两阶段提交（2PC）与崩溃恢复总结"><a href="#MySQL-Redo-Log-两阶段提交（2PC）与崩溃恢复总结" class="headerlink" title="MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结"></a><strong>MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结</strong></h1><h2 id="1-两阶段提交（2PC）流程"><a href="#1-两阶段提交（2PC）流程" class="headerlink" title="1. 两阶段提交（2PC）流程"></a><strong>1. 两阶段提交（2PC）流程</strong></h2><p>两阶段提交确保 <strong>Redo Log</strong> 和 <strong>Binlog</strong> 一致，流程如下：</p>
+        <h2 id="1-两阶段提交（2PC）流程"><a href="#1-两阶段提交（2PC）流程" class="headerlink" title="1. 两阶段提交（2PC）流程"></a><strong>1. 两阶段提交（2PC）流程</strong></h2><p>两阶段提交确保 <strong>Redo Log</strong> 和 <strong>Binlog</strong> 一致，流程如下：</p>
 <h3 id="第一阶段：Prepare"><a href="#第一阶段：Prepare" class="headerlink" title="第一阶段：Prepare"></a><strong>第一阶段：Prepare</strong></h3><ol>
 <li>事务执行 SQL，修改数据。</li>
 <li><strong>Redo Log 记录写入磁盘，但标记为 <code>prepare</code> 状态</strong>（数据未真正提交）。</li>
@@ -184,7 +184,7 @@
       
     </div>
     <footer class="article-footer">
-      <a data-url="https://yafenglou.github.io/2026/07/06/MySQL%20Redo%20Log%20%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%EF%BC%882PC%EF%BC%89%E4%B8%8E%E5%B4%A9%E6%BA%83%E6%81%A2%E5%A4%8D%E6%80%BB%E7%BB%93/" data-id="cuidh7CllkO7Yk01wW4HEGjuU" data-title="MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结" class="article-share-link"><span class="fa fa-share">分享</span></a>
+      <a data-url="https://yafenglou.github.io/2026/07/06/MySQL%20Redo%20Log%20%E4%B8%A4%E9%98%B6%E6%AE%B5%E6%8F%90%E4%BA%A4%EF%BC%882PC%EF%BC%89%E4%B8%8E%E5%B4%A9%E6%BA%83%E6%81%A2%E5%A4%8D%E6%80%BB%E7%BB%93/" data-id="cuidwsqoVKzpWfs5ajGMto1En" data-title="MySQL Redo Log 两阶段提交（2PC）与崩溃恢复总结" class="article-share-link"><span class="fa fa-share">分享</span></a>
       
       
       
@@ -206,7 +206,7 @@
   <div class="widget-wrap">
     <h3 class="widget-title">分类</h3>
     <div class="widget">
-      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E5%90%8E%E7%AB%AF/">后端</a></li></ul>
+      <ul class="category-list"><li class="category-list-item"><a class="category-list-link" href="/categories/%E5%90%8E%E7%AB%AF/">后端</a><ul class="category-list-child"><li class="category-list-item"><a class="category-list-link" href="/categories/%E5%90%8E%E7%AB%AF/%E6%95%B0%E6%8D%AE%E5%BA%93%E5%86%85%E9%83%A8%E5%8E%9F%E7%90%86/">数据库内部原理</a></li></ul></li></ul>
     </div>
   </div>
 
